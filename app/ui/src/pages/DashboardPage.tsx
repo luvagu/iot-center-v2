@@ -33,6 +33,14 @@ import {flux, fluxDuration, InfluxDB} from '@influxdata/influxdb-client'
 import {queryTable} from '../util/queryTable'
 import {VIRTUAL_DEVICE} from '../App'
 
+import {MapContainer, TileLayer} from 'react-leaflet'
+import AntPathWrapper from '../util/antPathWrapper'
+
+const zip = <T1, T2>(arr1: T1[], arr2: T2[]): [T1, T2][] =>
+  arr1.map((x, i) => [x, arr2[i]])
+
+const last = <T,>(arr: T[]) => arr[arr.length - 1]
+
 interface DeviceConfig {
   influx_url: string
   influx_org: string
@@ -81,7 +89,7 @@ const fetchDeviceMeasurements = async (
   from(bucket: ${bucket})
     |> range(start: ${fluxDuration(timeStart)})
     |> filter(fn: (r) => r._measurement == "environment")
-    |> filter(fn: (r) => r["_field"] == "Temperature" or r["_field"] == "TVOC" or r["_field"] == "Pressure" or r["_field"] == "Humidity" or r["_field"] == "CO2")
+    |> filter(fn: (r) => r["_field"] == "Temperature" or r["_field"] == "TVOC" or r["_field"] == "Pressure" or r["_field"] == "Humidity" or r["_field"] == "CO2" or r["_field"] == "Lat" or r["_field"] == "Lon")
     |> filter(fn: (r) => r.clientId == ${id})
     |> v1.fieldsAsCols()`
   )
@@ -392,6 +400,36 @@ const DashboardPage: FunctionComponent<
     </>
   ) : undefined
 
+  const geo =
+    measurementsTable && measurementsTable?.length
+      ? (() => {
+          const latCol = measurementsTable.getColumn('Lat', 'number')
+          const lonCol = measurementsTable.getColumn('Lon', 'number')
+
+          if (!lonCol || !latCol) return undefined
+
+          const track = zip(latCol as number[], lonCol as number[])
+
+          // Made from basic react-leaflet example https://react-leaflet.js.org/docs/start-setup
+          return (
+            <>
+              <MapContainer
+                style={{width: '100%', height: '500px'}}
+                center={last(track)}
+                zoom={6}
+              >
+                <TileLayer
+                  attribution='&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                <AntPathWrapper positions={track} />
+              </MapContainer>
+              <Divider />
+            </>
+          )
+        })()
+      : undefined
+
   const renderPlot = (
     lineDefinition: Partial<LineLayerConfig> | undefined,
     table: GiraffeTable,
@@ -550,6 +588,7 @@ const DashboardPage: FunctionComponent<
       {deviceData?.measurementsTable?.length ? (
         <>
           {gauges}
+          {geo}
           {plots}
         </>
       ) : (
